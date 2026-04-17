@@ -1,0 +1,439 @@
+---
+title: "Análisis Estadístico con Aplicación en R"
+subtitle: "Entidad Financiera - 60 Clientes"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: show
+    df_print: kable
+  pdf_document:
+    toc: true
+    number_sections: true
+lang: es
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 9,
+  fig.height = 6,
+  fig.align = "center"
+)
+
+options(OutDec = ".", scipen = 999)
+
+# Configurar librería de usuario
+user_lib <- Sys.getenv("R_LIBS_USER")
+if (!dir.exists(user_lib)) dir.create(user_lib, recursive = TRUE)
+.libPaths(c(user_lib, .libPaths()))
+
+library(ggplot2)
+library(moments)
+```
+
+# Carga de Datos
+
+```{r carga-datos}
+datos <- read.csv("../data/clientes_banco.csv", stringsAsFactors = FALSE)
+
+# Recrear factores con etiquetas
+datos$IndustriaCat <- factor(datos$Industria,
+                             levels = c(0, 1, 2),
+                             labels = c("Otra", "Manufactura", "Construcción"))
+
+datos$OcupacionCat <- factor(datos$Ocupacion,
+                             levels = c(0, 1, 2, 3, 4, 5),
+                             labels = c("Otro", "Administrador", "Ventas",
+                                        "Operario oficina", "Servicios generales",
+                                        "Ingeniero"))
+```
+
+El dataset contiene **`r nrow(datos)` clientes** de una entidad financiera con 3 variables de estudio.
+
+---
+
+# Punto 1: Descripción de la Población de Interés
+
+La **población de interés** está conformada por los **60 clientes** de una entidad financiera (banco). Se busca caracterizar su comportamiento en función de tres variables fundamentales:
+
+- **Salario Anual** (en dólares estadounidenses)
+- **Tipo de Industria** en la que trabajan
+- **Ocupación** laboral
+
+El propósito del análisis es estudiar la base de datos para **ofrecer productos y servicios bancarios personalizados** para todos los clientes o segmentos específicos de ellos.
+
+**Tamaño de la población:** N = `r nrow(datos)` clientes.
+
+---
+
+# Punto 2: Clasificación de las Variables
+
+| Variable | Nombre | Tipo | Escala | Categorías |
+|----------|--------|------|--------|------------|
+| X1 | Salario Anual (USD) | Cuantitativa continua | De razón | --- |
+| X2 | Tipo de Industria | Cualitativa nominal | Nominal | 0=Otra, 1=Manufactura, 2=Construcción |
+| X3 | Ocupación | Cualitativa nominal | Nominal | 0=Otro, 1=Administrador, 2=Ventas, 3=Operario oficina, 4=Servicios generales, 5=Ingeniero |
+
+- **X1 - Salario Anual:** Es una variable **cuantitativa continua** medida en escala de **razón**, ya que posee un cero absoluto (un salario de $0 tiene significado real), permite todas las operaciones aritméticas y sus valores pueden tomar cualquier número positivo dentro del rango observado.
+
+- **X2 - Tipo de Industria:** Es una variable **cualitativa nominal** porque sus categorías (Otra, Manufactura, Construcción) no tienen un orden jerárquico natural.
+
+- **X3 - Ocupación:** Es una variable **cualitativa nominal** puesto que las categorías de ocupación representan distintas funciones laborales sin un orden intrínseco.
+
+---
+
+# Punto 3: Tabla de Frecuencias y Diagrama Circular - Ocupación
+
+## Tabla de Frecuencias
+
+```{r tabla-ocupacion}
+freq_ocup <- table(datos$OcupacionCat)
+rel_ocup <- prop.table(freq_ocup)
+
+tabla_ocup <- data.frame(
+  Categoría          = names(freq_ocup),
+  `Frecuencia Absoluta` = as.integer(freq_ocup),
+  `Frecuencia Relativa` = round(as.numeric(rel_ocup), 4),
+  `Porcentaje (%)`      = round(as.numeric(rel_ocup) * 100, 2),
+  `Frec. Acumulada`     = as.integer(cumsum(freq_ocup)),
+  `Frec. Rel. Acum.`    = round(as.numeric(cumsum(rel_ocup)), 4),
+  check.names = FALSE
+)
+
+knitr::kable(tabla_ocup, align = "lrrrrr",
+             caption = "Tabla de frecuencias - Variable Ocupación")
+```
+
+## Diagrama Circular
+
+```{r pie-ocupacion, fig.cap="Diagrama circular de la variable Ocupación"}
+df_ocup <- as.data.frame(freq_ocup)
+names(df_ocup) <- c("Ocupacion", "Frecuencia")
+df_ocup$Porcentaje <- round(df_ocup$Frecuencia / sum(df_ocup$Frecuencia) * 100, 1)
+df_ocup$Etiqueta <- paste0(df_ocup$Ocupacion, "\n", df_ocup$Frecuencia,
+                            " (", df_ocup$Porcentaje, "%)")
+
+colores <- c("#E74C3C", "#3498DB", "#2ECC71", "#F39C12", "#9B59B6", "#1ABC9C")
+
+ggplot(df_ocup, aes(x = "", y = Frecuencia, fill = Ocupacion)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values = colores) +
+  geom_text(aes(label = paste0(Porcentaje, "%")),
+            position = position_stack(vjust = 0.5), size = 4, fontface = "bold") +
+  labs(title = "Distribución de Clientes por Ocupación",
+       fill = "Ocupación") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+```
+
+## Interpretación
+
+La ocupación con mayor representación en la cartera de clientes es **Ingeniero** con `r freq_ocup["Ingeniero"]` clientes (`r round(rel_ocup["Ingeniero"]*100,1)`%), seguida de **Operario de oficina** con `r freq_ocup["Operario oficina"]` clientes (`r round(rel_ocup["Operario oficina"]*100,1)`%). La categoría con menor frecuencia es **Ventas** con apenas `r freq_ocup["Ventas"]` clientes (`r round(rel_ocup["Ventas"]*100,1)`%). Esta distribución sugiere que la entidad financiera atiende principalmente a profesionales técnicos y personal administrativo, lo cual es relevante para diseñar productos financieros orientados a estos perfiles laborales.
+
+---
+
+# Punto 4: Tabla de Frecuencias y Diagrama de Barras - Industria
+
+## Tabla de Frecuencias
+
+```{r tabla-industria}
+freq_ind <- table(datos$IndustriaCat)
+rel_ind <- prop.table(freq_ind)
+
+tabla_ind <- data.frame(
+  Categoría          = names(freq_ind),
+  `Frecuencia Absoluta` = as.integer(freq_ind),
+  `Frecuencia Relativa` = round(as.numeric(rel_ind), 4),
+  `Porcentaje (%)`      = round(as.numeric(rel_ind) * 100, 2),
+  `Frec. Acumulada`     = as.integer(cumsum(freq_ind)),
+  `Frec. Rel. Acum.`    = round(as.numeric(cumsum(rel_ind)), 4),
+  check.names = FALSE
+)
+
+knitr::kable(tabla_ind, align = "lrrrrr",
+             caption = "Tabla de frecuencias - Variable Tipo de Industria")
+```
+
+## Diagrama de Barras
+
+```{r barras-industria, fig.cap="Diagrama de barras de la variable Tipo de Industria"}
+df_ind <- as.data.frame(freq_ind)
+names(df_ind) <- c("Industria", "Frecuencia")
+df_ind$Porcentaje <- round(df_ind$Frecuencia / sum(df_ind$Frecuencia) * 100, 1)
+
+ggplot(df_ind, aes(x = Industria, y = Frecuencia, fill = Industria)) +
+  geom_bar(stat = "identity", width = 0.6, color = "white", linewidth = 0.5) +
+  geom_text(aes(label = paste0(Frecuencia, " (", Porcentaje, "%)")),
+            vjust = -0.5, size = 4.5, fontface = "bold") +
+  scale_fill_manual(values = c("#3498DB", "#E74C3C", "#F39C12")) +
+  labs(title = "Distribución de Clientes por Tipo de Industria",
+       x = "Tipo de Industria",
+       y = "Frecuencia Absoluta") +
+  ylim(0, max(df_ind$Frecuencia) + 5) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        legend.position = "none")
+```
+
+## Interpretación
+
+La distribución por tipo de industria muestra que **Manufactura** es el sector más representado con `r freq_ind["Manufactura"]` clientes (`r round(rel_ind["Manufactura"]*100,1)`%), seguido muy de cerca por **Otra** con `r freq_ind["Otra"]` clientes (`r round(rel_ind["Otra"]*100,1)`%). **Construcción** es el sector con menor presencia con `r freq_ind["Construcción"]` clientes (`r round(rel_ind["Construcción"]*100,1)`%). La distribución es relativamente balanceada entre los tres sectores, lo que indica que la entidad financiera tiene una cartera diversificada en términos de la industria de sus clientes.
+
+---
+
+# Punto 5: Tabla de Frecuencias e Histograma - Salario Anual
+
+## Tabla de Frecuencias
+
+```{r tabla-salario}
+n <- nrow(datos)
+k <- ceiling(1 + 3.322 * log10(n))  # Regla de Sturges
+
+rango <- max(datos$SalarioAnual) - min(datos$SalarioAnual)
+amplitud <- ceiling(rango / k)
+lim_inf <- min(datos$SalarioAnual)
+cortes <- seq(lim_inf, lim_inf + k * amplitud, by = amplitud)
+if (max(cortes) < max(datos$SalarioAnual)) {
+  cortes <- c(cortes, max(cortes) + amplitud)
+}
+
+datos$ClaseSalario <- cut(datos$SalarioAnual, breaks = cortes, right = FALSE,
+                          include.lowest = TRUE)
+
+freq_sal <- table(datos$ClaseSalario)
+rel_sal <- prop.table(freq_sal)
+
+tabla_sal <- data.frame(
+  Intervalo             = names(freq_sal),
+  `Frecuencia Absoluta` = as.integer(freq_sal),
+  `Frecuencia Relativa` = round(as.numeric(rel_sal), 4),
+  `Porcentaje (%)`      = round(as.numeric(rel_sal) * 100, 2),
+  `Frec. Acumulada`     = as.integer(cumsum(freq_sal)),
+  `Frec. Rel. Acum.`    = round(as.numeric(cumsum(rel_sal)), 4),
+  check.names = FALSE
+)
+
+knitr::kable(tabla_sal, align = "lrrrrr",
+             caption = paste("Tabla de frecuencias - Salario Anual (k =", k, "clases, Regla de Sturges)"))
+```
+
+## Histograma
+
+```{r histograma-salario, fig.cap="Histograma del Salario Anual"}
+media_sal <- mean(datos$SalarioAnual)
+mediana_sal <- median(datos$SalarioAnual)
+
+ggplot(datos, aes(x = SalarioAnual)) +
+  geom_histogram(breaks = cortes, fill = "#3498DB", color = "white", linewidth = 0.3) +
+  geom_vline(aes(xintercept = media_sal, color = "Media"),
+             linetype = "dashed", linewidth = 1) +
+  geom_vline(aes(xintercept = mediana_sal, color = "Mediana"),
+             linetype = "dashed", linewidth = 1) +
+  scale_color_manual(name = "Referencia",
+                     values = c("Media" = "#E74C3C", "Mediana" = "#2ECC71")) +
+  scale_x_continuous(labels = scales::comma) +
+  labs(title = "Distribución del Salario Anual de los Clientes",
+       x = "Salario Anual (USD)",
+       y = "Frecuencia") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+```
+
+## Interpretación
+
+El histograma revela una distribución **asimétrica positiva** (sesgada a la derecha), lo que significa que la mayoría de los salarios se concentran en los rangos más bajos, con una cola que se extiende hacia los valores más altos. La mayor concentración de clientes se encuentra en el rango de salarios entre $28,000 y $39,000 USD. La media ($`r format(round(media_sal,0), big.mark=",")`) es mayor que la mediana ($`r format(round(mediana_sal,0), big.mark=",")`), confirmando la asimetría positiva. Esto indica la presencia de algunos clientes con salarios considerablemente más altos que el promedio.
+
+---
+
+# Punto 6: Tabla Cruzada y Barras Apiladas - Ocupación x Industria
+
+## Tabla de Contingencia
+
+```{r tabla-cruzada}
+tabla_cruzada <- table(datos$OcupacionCat, datos$IndustriaCat)
+tabla_con_margenes <- addmargins(tabla_cruzada)
+
+knitr::kable(tabla_con_margenes,
+             caption = "Tabla de contingencia: Ocupación x Tipo de Industria")
+```
+
+## Diagrama de Barras Apiladas
+
+```{r barras-apiladas, fig.cap="Diagrama de barras apiladas: Ocupación por Tipo de Industria"}
+df_cruzada <- as.data.frame(tabla_cruzada)
+names(df_cruzada) <- c("Ocupacion", "Industria", "Frecuencia")
+
+ggplot(df_cruzada, aes(x = Ocupacion, y = Frecuencia, fill = Industria)) +
+  geom_bar(stat = "identity", color = "white", linewidth = 0.3) +
+  scale_fill_manual(values = c("#3498DB", "#E74C3C", "#F39C12")) +
+  labs(title = "Distribución de Ocupación por Tipo de Industria",
+       x = "Ocupación",
+       y = "Frecuencia",
+       fill = "Industria") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Interpretación
+
+La tabla cruzada y el diagrama de barras apiladas revelan la relación entre la ocupación y el tipo de industria de los clientes. Se observa que los **Ingenieros** constituyen el grupo más grande y se distribuyen principalmente entre las industrias "Otra" y "Manufactura". Los **Operarios de oficina** también muestran una presencia significativa con distribución relativamente uniforme. La categoría **Ventas** tiene la menor representación y se concentra en los sectores Otra y Manufactura, sin presencia en Construcción. Esto permite a la entidad bancaria identificar nichos específicos para ofrecer productos diferenciados.
+
+---
+
+# Punto 7: Resumen Estadístico - Salario Anual
+
+```{r resumen-estadistico}
+salario <- datos$SalarioAnual
+
+# Medidas de centro
+media <- mean(salario)
+mediana <- median(salario)
+calcular_moda <- function(x) {
+  tb <- table(x)
+  modas <- as.numeric(names(tb[tb == max(tb)]))
+  if (length(modas) == length(unique(x))) return(NA)
+  return(modas)
+}
+moda <- calcular_moda(salario)
+
+# Medidas de posición
+cuartiles <- quantile(salario, probs = c(0.25, 0.50, 0.75))
+deciles <- quantile(salario, probs = seq(0.1, 0.9, by = 0.1))
+percentiles <- quantile(salario, probs = c(0.10, 0.25, 0.50, 0.75, 0.90))
+
+# Medidas de variación
+rango_val <- max(salario) - min(salario)
+iqr_val <- IQR(salario)
+varianza <- var(salario)
+desv_est <- sd(salario)
+cv <- (desv_est / media) * 100
+
+# Medidas de forma
+asimetria <- skewness(salario)
+curtosis_val <- kurtosis(salario)
+```
+
+## Medidas de Tendencia Central
+
+| Medida | Valor |
+|--------|-------|
+| Media aritmética | $`r format(round(media, 2), big.mark = ",")` USD |
+| Mediana | $`r format(round(mediana, 2), big.mark = ",")` USD |
+| Moda | $`r if(any(is.na(moda))) "No existe (todos los valores son distintos)" else paste(format(moda, big.mark = ","), "USD")` |
+
+**Interpretación:** La media aritmética de $`r format(round(media,0), big.mark=",")` USD representa el salario promedio de todos los clientes. La mediana de $`r format(round(mediana,0), big.mark=",")` USD indica que el 50% de los clientes gana por debajo de este valor. La diferencia entre media y mediana (media > mediana) confirma la presencia de asimetría positiva, es decir, algunos salarios altos elevan el promedio.
+
+## Medidas de Posición
+
+### Cuartiles
+
+| Cuartil | Percentil | Valor |
+|---------|-----------|-------|
+| Q1 | 25% | $`r format(round(cuartiles[1], 2), big.mark = ",")` USD |
+| Q2 | 50% | $`r format(round(cuartiles[2], 2), big.mark = ",")` USD |
+| Q3 | 75% | $`r format(round(cuartiles[3], 2), big.mark = ",")` USD |
+
+### Deciles
+
+```{r deciles}
+df_deciles <- data.frame(
+  Decil = paste0("D", 1:9),
+  Percentil = paste0(seq(10, 90, by = 10), "%"),
+  Valor = paste0("$", format(round(deciles, 2), big.mark = ","), " USD")
+)
+knitr::kable(df_deciles, align = "llr", caption = "Deciles del Salario Anual")
+```
+
+**Interpretación:** Los cuartiles dividen la distribución en cuatro partes iguales. El rango intercuartílico (Q3 - Q1 = $`r format(round(iqr_val,0), big.mark=",")` USD) contiene el 50% central de los datos. El Q1 indica que el 25% de los clientes gana menos de $`r format(round(cuartiles[1],0), big.mark=",")` USD y el Q3 indica que el 75% gana menos de $`r format(round(cuartiles[3],0), big.mark=",")` USD.
+
+## Medidas de Variación (Dispersión)
+
+| Medida | Valor |
+|--------|-------|
+| Valor mínimo | $`r format(min(salario), big.mark = ",")` USD |
+| Valor máximo | $`r format(max(salario), big.mark = ",")` USD |
+| Rango | $`r format(round(rango_val, 2), big.mark = ",")` USD |
+| Rango intercuartílico (IQR) | $`r format(round(iqr_val, 2), big.mark = ",")` USD |
+| Varianza | `r format(round(varianza, 2), big.mark = ",")` USD² |
+| Desviación estándar | $`r format(round(desv_est, 2), big.mark = ",")` USD |
+| Coeficiente de variación (CV) | `r round(cv, 2)`% |
+
+**Interpretación:** La desviación estándar de $`r format(round(desv_est,0), big.mark=",")` USD indica la dispersión promedio de los salarios respecto a la media. El coeficiente de variación del `r round(cv,1)`% es **`r ifelse(cv > 30, "alto (> 30%)", ifelse(cv > 15, "moderado", "bajo"))`**, lo que indica una distribución **`r ifelse(cv > 30, "heterogénea", ifelse(cv > 15, "con dispersión moderada", "homogénea"))`** en los salarios. Existe una variabilidad considerable entre los ingresos de los clientes.
+
+## Medidas de Forma
+
+| Medida | Valor | Interpretación |
+|--------|-------|----------------|
+| Asimetría (Skewness) | `r round(asimetria, 4)` | `r ifelse(asimetria > 0.5, "Asimétrica positiva (sesgada a la derecha)", ifelse(asimetria < -0.5, "Asimétrica negativa (sesgada a la izquierda)", "Aproximadamente simétrica"))` |
+| Curtosis (Kurtosis) | `r round(curtosis_val, 4)` | `r ifelse(curtosis_val > 3, "Leptocúrtica (colas pesadas)", ifelse(curtosis_val < 3, "Platicúrtica (colas livianas)", "Mesocúrtica (similar a la normal)"))` |
+
+**Interpretación:** El coeficiente de asimetría de `r round(asimetria, 4)` confirma que la distribución es **asimétrica positiva**, es decir, la cola se extiende hacia la derecha con algunos clientes que tienen salarios significativamente superiores al promedio. La curtosis de `r round(curtosis_val, 4)` indica una distribución **`r ifelse(curtosis_val > 3, "leptocúrtica", ifelse(curtosis_val < 3, "platicúrtica", "mesocúrtica"))`**, lo que sugiere `r ifelse(curtosis_val > 3, "que los datos presentan colas más pesadas que una distribución normal, con mayor concentración de valores extremos", "una menor concentración en los extremos comparada con la distribución normal")`.
+
+---
+
+# Punto 8: Diagramas de Caja y Bigotes - Ocupación vs Salario Anual
+
+## Resumen por Ocupación
+
+```{r resumen-por-ocupacion}
+resumen <- aggregate(SalarioAnual ~ OcupacionCat, data = datos, FUN = function(x) {
+  c(n = length(x),
+    Media = round(mean(x), 0),
+    Mediana = round(median(x), 0),
+    Min = min(x),
+    Max = max(x),
+    Desv.Est = round(sd(x), 0))
+})
+resumen_df <- do.call(data.frame, resumen)
+names(resumen_df) <- c("Ocupación", "n", "Media", "Mediana", "Mín", "Máx", "Desv.Est")
+knitr::kable(resumen_df, align = "lrrrrrr",
+             caption = "Resumen estadístico del Salario Anual por Ocupación")
+```
+
+## Diagrama de Caja y Bigotes
+
+```{r boxplot-ocupacion-salario, fig.cap="Diagramas de caja y bigotes: Salario Anual por Ocupación"}
+ggplot(datos, aes(x = OcupacionCat, y = SalarioAnual, fill = OcupacionCat)) +
+  geom_boxplot(outlier.color = "red", outlier.shape = 16, outlier.size = 3) +
+  geom_hline(yintercept = mean(datos$SalarioAnual),
+             linetype = "dashed", color = "red", linewidth = 0.7) +
+  annotate("text", x = 0.5, y = mean(datos$SalarioAnual) + 2000,
+           label = paste("Media general =", format(round(mean(datos$SalarioAnual), 0), big.mark = ",")),
+           hjust = 0, color = "red", size = 3.5) +
+  scale_fill_manual(values = c("#E74C3C", "#3498DB", "#2ECC71", "#F39C12", "#9B59B6", "#1ABC9C")) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Salario Anual por Tipo de Ocupación",
+       x = "Ocupación",
+       y = "Salario Anual (USD)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+```
+
+## Interpretación
+
+Los diagramas de caja y bigotes permiten comparar visualmente la distribución salarial entre las distintas ocupaciones:
+
+- **Ventas** presenta la mediana más alta y la mayor dispersión (caja más amplia), lo que indica salarios más variables en este grupo.
+- **Operario de oficina** muestra la mediana más baja, sugiriendo que estos profesionales tienden a tener los salarios más bajos.
+- **Administrador** presenta una distribución relativamente compacta alrededor de la media general, indicando salarios más homogéneos.
+- **Ingeniero** muestra una distribución amplia con algunos valores en el rango superior.
+- **Servicios generales** tiene alta variabilidad, con la caja extendiéndose considerablemente.
+- La línea roja punteada representa la media general ($`r format(round(mean(datos$SalarioAnual),0), big.mark=",")` USD), permitiendo identificar qué ocupaciones están por encima o debajo del promedio global.
+- Los puntos rojos fuera de los bigotes representan **valores atípicos** (outliers).
+
+Estos hallazgos son valiosos para que la entidad financiera diseñe productos diferenciados según el perfil salarial de cada ocupación.
+
+---
+
+*Análisis realizado con R versión `r R.version.string`*
